@@ -834,11 +834,11 @@
   // Instrumentos geométricos virtuales (en coordenadas de pantalla)
   let ruler = { active: false, x: 240, y: 260, w: 380, h: 56, angle: 0 };
   let protractor = { active: false, x: 460, y: 340, r: 120, angle: 0 };
-  let activeInstrument = null; // { type: 'ruler'|'protractor', mode: 'move'|'rotate', startX, startY, origX, origY, origAngle }
+  let activeInstrument = null;
 
   let drawing = null;
   let selected = null;
-  let drag = null; // { item, mode: 'move'|'resize', last, origBounds, origItem }
+  let drag = null;
   let panDrag = null;
   let laserTrail = [];
   let undoStack = [];
@@ -862,39 +862,47 @@
     if (undoStack.length > 60) undoStack.shift();
     redoStack = [];
     updateHistory();
-    autoSave();
   }
 
-  function autoSave() {
+  // Limpia por completo la pizarra (al entrar, recargar o salir)
+  function resetBoardState() {
     try {
-      localStorage.setItem('zenit_blackboard_autosave', JSON.stringify({
-        boardTheme,
-        paper: $('paperType').value,
-        showAxes,
-        pages: JSON.parse(serializePages())
-      }));
+      localStorage.removeItem('zenit_blackboard_autosave');
     } catch (e) {}
+
+    boardTheme = 'chalk-green';
+    pages = [{ items: [] }];
+    page = 0;
+    tool = 'pen';
+    color = '#f8fafc';
+    thickness = 2.5;
+    zoom = 1;
+    offset = { x: 0, y: 0 };
+    showAxes = false;
+    drawing = null;
+    selected = null;
+    drag = null;
+    panDrag = null;
+    laserTrail = [];
+    undoStack = [];
+    redoStack = [];
+
+    $('paperType').value = 'plain';
+    $('axesBtn').classList.remove('active');
+    document.querySelectorAll('.theme-dot').forEach(x => x.classList.toggle('active-theme', x.dataset.board === 'chalk-green'));
+    document.querySelectorAll('.swatch').forEach(x => x.classList.toggle('selected', x.dataset.color === '#f8fafc'));
+    document.querySelectorAll('.tool').forEach(b => b.classList.toggle('active', b.dataset.tool === 'pen'));
+
+    pageUI();
+    updateHistory();
   }
 
-  function loadAutoSave() {
-    try {
-      const raw = localStorage.getItem('zenit_blackboard_autosave');
-      if (!raw) return;
-      const data = JSON.parse(raw);
-      if (data.boardTheme && BOARD_THEMES[data.boardTheme]) {
-        boardTheme = data.boardTheme;
-        document.querySelectorAll('.theme-dot').forEach(x => x.classList.toggle('active-theme', x.dataset.board === boardTheme));
-      }
-      if (data.paper) $('paperType').value = data.paper;
-      if (data.showAxes) {
-        showAxes = true;
-        $('axesBtn').classList.add('active');
-      }
-      if (data.pages && data.pages.length) {
-        restorePages(JSON.stringify(data.pages));
-      }
-    } catch (e) {}
-  }
+  window.addEventListener('beforeunload', resetBoardState);
+  window.addEventListener('pagehide', resetBoardState);
+  window.addEventListener('pageshow', () => {
+    resetBoardState();
+    resize();
+  });
 
   function updateHistory() {
     $('undoBtn').disabled = !undoStack.length;
@@ -973,7 +981,6 @@
       ctx.setLineDash([5 / zoom, 4 / zoom]);
       ctx.strokeRect(b.x - pad, b.y - pad, b.w + pad * 2, b.h + pad * 2);
       ctx.setLineDash([]);
-      // Nodo esquina inferior derecha para escalar
       const hs = 9 / zoom;
       ctx.fillStyle = '#38bdf8';
       ctx.fillRect(b.x + b.w + pad - hs / 2, b.y + b.h + pad - hs / 2, hs, hs);
@@ -1129,7 +1136,6 @@
       }
       ctx.stroke();
     } else if (o.type === 'function') {
-      // Curva matemática f(x) sobre el plano cartesiano
       const unit = spacing;
       const { w } = dims();
       const left = -offset.x / zoom;
@@ -1149,7 +1155,6 @@
         }
       }
       ctx.stroke();
-      // Etiqueta de la función
       ctx.font = `italic bold 14px Georgia, serif`;
       ctx.fillText(`f(x) = ${o.expr}`, o.labelX ?? 40, o.labelY ?? -40);
     } else if (o.type === 'line') {
@@ -1174,7 +1179,6 @@
       ctx.fillStyle = o.bg || '#fef08a';
       ctx.fillRect(o.x, o.y, sw, sh);
       ctx.shadowColor = 'transparent';
-      // Doblez superior
       ctx.fillStyle = 'rgba(0,0,0,0.08)';
       ctx.fillRect(o.x, o.y, sw, 22);
       ctx.fillStyle = '#1e293b';
@@ -1216,7 +1220,6 @@
     context.fillText(line, x, y);
   }
 
-  // Evaluador seguro de expresiones matemáticas para f(x)
   function evalMathExpr(expr, x) {
     try {
       let clean = expr.toLowerCase()
@@ -1238,7 +1241,6 @@
     }
   }
 
-  // Regla Virtual Interactiva
   function drawRuler() {
     ctx.save();
     ctx.translate(ruler.x, ruler.y);
@@ -1263,7 +1265,6 @@
       ctx.stroke();
       if (isCm) ctx.fillText(((px - 10) / 50).toString(), px, 27);
     }
-    // Botón de rotación en el extremo derecho
     ctx.fillStyle = '#38bdf8';
     ctx.beginPath();
     ctx.arc(ruler.w - 16, ruler.h / 2, 7, 0, Math.PI * 2);
@@ -1271,7 +1272,6 @@
     ctx.restore();
   }
 
-  // Transportador Virtual Interactivo
   function drawProtractor() {
     ctx.save();
     ctx.translate(protractor.x, protractor.y);
@@ -1398,7 +1398,6 @@
     }
   }
 
-  // Verificar si se hizo clic en la regla o transportador
   function hitInstruments(sp) {
     if (ruler.active) {
       const dx = sp.x - ruler.x, dy = sp.y - ruler.y;
@@ -1423,7 +1422,6 @@
     const sp = pointer(e);
     const p = world(sp);
 
-    // Prioridad a mover/rotar regla o transportador si se tocan
     const instHit = hitInstruments(sp);
     if (instHit) {
       activeInstrument = instHit;
@@ -1440,7 +1438,6 @@
     }
 
     if (tool === 'select') {
-      // Verificar primero si se tocó el nodo de redimensionado del elemento seleccionado
       if (selected) {
         const b = bounds(selected);
         const pad = 6 / zoom;
@@ -1576,7 +1573,7 @@
   canvas.addEventListener('pointerup', () => {
     if (activeInstrument) { activeInstrument = null; return; }
     if (tool === 'laser') { laserTrail = []; render(); return; }
-    if (drag) { drag = null; autoSave(); render(); return; }
+    if (drag) { drag = null; render(); return; }
     if (panDrag) { panDrag = null; render(); return; }
     if (!drawing) return;
 
@@ -1654,7 +1651,6 @@
       const defInk = BOARD_THEMES[boardTheme].defaultInk;
       color = defInk;
       document.querySelectorAll('.swatch').forEach(x => x.classList.toggle('selected', x.dataset.color === defInk));
-      autoSave();
       render();
     });
   });
@@ -1668,11 +1664,10 @@
       offset.x = w / 2;
       offset.y = h / 2;
     }
-    autoSave();
     render();
   };
 
-  $('paperType').onchange = () => { autoSave(); render(); };
+  $('paperType').onchange = () => { render(); };
 
   // Instrumentos geométricos y aula
   $('rulerBtn').onclick = () => {
@@ -1848,8 +1843,6 @@
         if (!v) return;
         const { w, h } = dims();
         const center = world({ x: w / 2 - 110, y: h / 2 - 35 });
-        // KaTeX es el motor de renderizado disponible en esta pizarra;
-        // ambas opciones aceptan expresiones con sintaxis LaTeX.
         renderLatexToImage(v, color, img => {
           snapshot();
           if (img) {
@@ -2039,7 +2032,6 @@
     page = Math.min(page, pages.length - 1);
     pageUI();
     updateHistory();
-    autoSave();
   };
 
   $('redoBtn').onclick = () => {
@@ -2049,7 +2041,6 @@
     page = Math.min(page, pages.length - 1);
     pageUI();
     updateHistory();
-    autoSave();
   };
 
   $('zoomIn').onclick = () => { zoom = Math.min(5, zoom * 1.2); render(); };
@@ -2065,7 +2056,7 @@
     render();
   };
 
-  // Atajos de teclado (incluyendo Ctrl+D para duplicar y Esc para salir de presentación)
+  // Atajos de teclado
   window.addEventListener('keydown', e => {
     if (e.key === 'Escape' && document.body.classList.contains('presentation-mode')) {
       document.body.classList.remove('presentation-mode');
@@ -2099,10 +2090,9 @@
     if (e.key === 'v' || e.key === 'V') setTool('select');
   });
 
-  loadAutoSave();
-  pageUI();
+  // Inicializar siempre limpia
+  resetBoardState();
   resize();
-  updateHistory();
 })();
 </script>
 </body>
